@@ -142,17 +142,14 @@ async function generatePDF_Render(html, filename = "document.pdf", maxRetries = 
 }
 
 app.post('/generate-pdf', async (req, res) => {
-    try {
+        const useLocal = Math.random() < 0.5;
         const html = typeof req.body === 'string' ? req.body : req.body.html;
-        
         if (!html) {
             return res.status(400).json({ error: 'HTML content is required' });
         }
-
         const filename = req.body.filename || 'document.pdf';
-        
+    try {
         // Random choice: 50% local, 50% external load balancer
-        const useLocal = Math.random() < 0.5;
         const pdf = useLocal 
             ? await createPDF(html)
             : await generatePDF_Render(html, filename);
@@ -169,6 +166,23 @@ app.post('/generate-pdf', async (req, res) => {
         res.end(pdf);
     } catch (error) {
         console.error('Error:', error);
+        if(useLocal){
+            try {
+                    const pdf =  await generatePDF_Render(html, filename);
+
+                    res.set({
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+                        'Content-Length': pdf.length,
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    });
+                    res.end(pdf);
+            } catch (error) {
+                    res.status(500).json({ error: 'Failed to generate PDF' });
+            }
+        }
         res.status(500).json({ error: 'Failed to generate PDF' });
     }
 });
