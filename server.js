@@ -78,7 +78,8 @@ async function createPDF(html) {
 async function generatePDF_Render(html, filename = "document.pdf", maxRetries = 2, triedUrls = []) {
     const pdfServiceUrls = [
         "https://itinerary-playwright.onrender.com/generate-pdf",
-        "https://itinerary-details-2.onrender.com/generate-pdf"
+        "https://itinerary-details-2.onrender.com/generate-pdf",
+        "https://itinerary-details-4.onrender.com/generate-pdf"
     ];
 
     const availableUrls = pdfServiceUrls.filter(url => !triedUrls.includes(url));
