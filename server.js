@@ -112,9 +112,9 @@ app.listen(PORT, () => {
 });
 
 // Keep Render alive - ping every 10 minutes
-if (process.env.RENDER_SERVICE_URL) {
+if ("https://itinerary-details.onrender.com") {
     cron.schedule('*/10 * * * *', () => {
-        const url = process.env.RENDER_SERVICE_URL + '/health';
+        const url = "https://itinerary-details.onrender.com" + '/health';
         console.log('Pinging service:', url);
         https.get(url, (res) => {
             console.log('Ping response:', res.statusCode);
