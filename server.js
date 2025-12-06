@@ -112,7 +112,7 @@ app.listen(PORT, () => {
 });
 
 // Keep Render alive - ping every 10 minutes
-const serviceUrl = "https://itinerary-details.onrender.com";
+const serviceUrl = "https://itinerary-details-2.onrender.com";
 setInterval(() => {
     const url = serviceUrl + '/health';
     console.log('Pinging service:', url);
