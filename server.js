@@ -112,17 +112,16 @@ app.listen(PORT, () => {
 });
 
 // Keep Render alive - ping every 10 minutes
-if ("https://itinerary-details.onrender.com") {
-    cron.schedule('*/10 * * * *', () => {
-        const url = "https://itinerary-details.onrender.com" + '/health';
-        console.log('Pinging service:', url);
-        https.get(url, (res) => {
-            console.log('Ping response:', res.statusCode);
-        }).on('error', (err) => {
-            console.error('Ping error:', err.message);
-        });
+const serviceUrl = "https://itinerary-details.onrender.com";
+setInterval(() => {
+    const url = serviceUrl + '/health';
+    console.log('Pinging service:', url);
+    https.get(url, (res) => {
+        console.log('Ping response:', res.statusCode);
+    }).on('error', (err) => {
+        console.error('Ping error:', err.message);
     });
-}
+}, 10 * 60 * 1000); // 10 minutes
 
 process.on('SIGTERM', async () => {
     if (browser) await browser.close();
