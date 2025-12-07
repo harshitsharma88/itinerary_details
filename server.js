@@ -23,7 +23,14 @@ async function initBrowser() {
     if (!browser) {
         console.log('Initializing browser...');
         browser = await puppeteer.launch({
-            args: chromium.args,
+            args: [
+                ...chromium.args,
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-breakpad',
+                '--font-render-hinting=medium'
+            ],
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless
@@ -46,7 +53,7 @@ async function createPDF(html) {
             request.continue();
         });
 
-        await page.setContent(html, { waitUntil: 'networkidle0' });
+        await page.setContent(html, { waitUntil: 'load' });
 
         await page.evaluate(() => {
             const images = document.querySelectorAll('img');
@@ -63,6 +70,7 @@ async function createPDF(html) {
             printBackground: true,
             format: 'A4',
             preferCSSPageSize: true,
+            timeout: 0,
             quality: 85
         });
 
