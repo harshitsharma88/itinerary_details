@@ -11,6 +11,13 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.text({ type: 'text/html', limit: '100mb' }));
 
 let browser = null;
+let currentServerIndex = 0;
+const servers = [
+    { name: 'LOCAL', url: null },
+    { name: 'RENDER-1', url: 'https://itinerary-playwright.onrender.com/generate-pdf' },
+    { name: 'RENDER-2', url: 'https://itinerary-details-2.onrender.com/generate-pdf' },
+    { name: 'RENDER-3', url: 'https://itinerary-details-4.onrender.com/generate-pdf' }
+];
 
 async function initBrowser() {
     if (!browser) {
@@ -75,22 +82,9 @@ async function createPDF(html) {
     }
 }
 
-async function generatePDF_Render(html, filename = "document.pdf", maxRetries = 2, triedUrls = []) {
-    const pdfServiceUrls = [
-        "https://itinerary-playwright.onrender.com/generate-pdf",
-        "https://itinerary-details-2.onrender.com/generate-pdf",
-        "https://itinerary-details-4.onrender.com/generate-pdf"
-    ];
-
-    const availableUrls = pdfServiceUrls.filter(url => !triedUrls.includes(url));
-
-    if (availableUrls.length === 0) {
-        throw new Error("All PDF service URLs failed.");
-    }
-
-    const selectedUrl = availableUrls[Math.floor(Math.random() * availableUrls.length)];
+async function generatePDF_Render(html, filename, serverUrl, serverName) {
     const postData = JSON.stringify({ html, filename });
-    const urlObj = new URL(selectedUrl);
+    const urlObj = new URL(serverUrl);
     const isHttps = urlObj.protocol === "https:";
     const client = isHttps ? https : http;
 
@@ -105,34 +99,20 @@ async function generatePDF_Render(html, filename = "document.pdf", maxRetries = 
     return new Promise((resolve, reject) => {
         const req = client.request(urlObj, options, async (res) => {
             if (res.statusCode !== 200) {
-                console.warn(`Service failed (${selectedUrl}) with status ${res.statusCode}`);
-
-                if (maxRetries > 0) {
-                    return resolve(
-                        generatePDF_Render(html, filename, maxRetries - 1, [...triedUrls, selectedUrl])
-                    );
-                }
-
-                return reject(new Error(`PDF generation failed at all URLs.`));
+                console.warn(`❌ ${serverName} failed with status ${res.statusCode}`);
+                return reject(new Error(`${serverName} failed`));
             }
 
             const chunks = [];
             res.on("data", (chunk) => chunks.push(chunk));
             res.on("end", () => {
-                console.log(`PDF generated from ${selectedUrl}`);
+                console.log(`✅ PDF generated successfully on ${serverName}`);
                 resolve(Buffer.concat(chunks));
             });
         });
 
-        req.on("error", async (error) => {
-            console.warn(`Error on ${selectedUrl}: ${error.message}`);
-
-            if (maxRetries > 0) {
-                return resolve(
-                    generatePDF_Render(html, filename, maxRetries - 1, [...triedUrls, selectedUrl])
-                );
-            }
-
+        req.on("error", (error) => {
+            console.warn(`❌ ${serverName} error: ${error.message}`);
             reject(error);
         });
 
@@ -141,18 +121,43 @@ async function generatePDF_Render(html, filename = "document.pdf", maxRetries = 
     });
 }
 
-app.post('/generate-pdf', async (req, res) => {
-        const useLocal = Math.random() < 0.5;
-        const html = typeof req.body === 'string' ? req.body : req.body.html;
-        if (!html) {
-            return res.status(400).json({ error: 'HTML content is required' });
-        }
-        const filename = req.body.filename || 'document.pdf';
+async function generatePDFWithRoundRobin(html, filename, triedServers = []) {
+    if (triedServers.length >= servers.length) {
+        throw new Error("All servers failed to generate PDF");
+    }
+
+    const server = servers[currentServerIndex];
+    currentServerIndex = (currentServerIndex + 1) % servers.length;
+
+    if (triedServers.includes(server.name)) {
+        return generatePDFWithRoundRobin(html, filename, triedServers);
+    }
+
+    console.log(`🔄 Attempting PDF generation on ${server.name}`);
+
     try {
-        // Random choice: 50% local, 50% external load balancer
-        const pdf = useLocal 
-            ? await createPDF(html)
-            : await generatePDF_Render(html, filename);
+        if (server.url === null) {
+            const pdf = await createPDF(html);
+            console.log(`✅ PDF generated successfully on ${server.name}`);
+            return pdf;
+        } else {
+            return await generatePDF_Render(html, filename, server.url, server.name);
+        }
+    } catch (error) {
+        console.warn(`❌ ${server.name} failed, trying next server...`);
+        return generatePDFWithRoundRobin(html, filename, [...triedServers, server.name]);
+    }
+}
+
+app.post('/generate-pdf', async (req, res) => {
+    const html = typeof req.body === 'string' ? req.body : req.body.html;
+    if (!html) {
+        return res.status(400).json({ error: 'HTML content is required' });
+    }
+    const filename = req.body.filename || 'document.pdf';
+    
+    try {
+        const pdf = await generatePDFWithRoundRobin(html, filename);
 
         res.set({
             'Content-Type': 'application/pdf',
@@ -165,25 +170,8 @@ app.post('/generate-pdf', async (req, res) => {
 
         res.end(pdf);
     } catch (error) {
-        console.error('Error:', error);
-        if(useLocal){
-            try {
-                    const pdf =  await generatePDF_Render(html, filename);
-
-                    res.set({
-                        'Content-Type': 'application/pdf',
-                        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
-                        'Content-Length': pdf.length,
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    });
-                    res.end(pdf);
-            } catch (error) {
-                    res.status(500).json({ error: 'Failed to generate PDF' });
-            }
-        }
-        res.status(500).json({ error: 'Failed to generate PDF' });
+        console.error('❌ All servers failed:', error.message);
+        res.status(500).json({ error: 'Failed to generate PDF on all servers' });
     }
 });
 
